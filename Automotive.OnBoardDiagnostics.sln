@@ -1,0 +1,46 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio 15
+VisualStudioVersion = 15.0.27004.2006
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Automotive.OnBoardDiagnostics", "Source\Automotive.OnBoardDiagnostics\Automotive.OnBoardDiagnostics.csproj", "{2EAB5624-7ACA-4AF0-9563-250292FE2DCE}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ELMElectronics.ELM327", "Source\Implementations\ELMElectronics.ELM327\ELMElectronics.ELM327\ELMElectronics.ELM327.csproj", "{7CDE27B0-879D-454E-A88C-BFC14C2C9738}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Implementations", "Implementations", "{A68EBA29-657F-4C87-A4BC-78D8F11EF8D5}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "ELMElectronics.ELM327", "ELMElectronics.ELM327", "{681980BC-A18A-465F-8D75-6A9DCA61D134}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ELMElectronics.ELM327.Test", "Source\Implementations\ELMElectronics.ELM327\ELMElectronics.ELM327.Test\ELMElectronics.ELM327.Test.csproj", "{9D0EBF3F-24B7-4C4E-8A09-17CD80354F75}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{2EAB5624-7ACA-4AF0-9563-250292FE2DCE}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{2EAB5624-7ACA-4AF0-9563-250292FE2DCE}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{2EAB5624-7ACA-4AF0-9563-250292FE2DCE}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{2EAB5624-7ACA-4AF0-9563-250292FE2DCE}.Release|Any CPU.Build.0 = Release|Any CPU
+		{7CDE27B0-879D-454E-A88C-BFC14C2C9738}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{7CDE27B0-879D-454E-A88C-BFC14C2C9738}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{7CDE27B0-879D-454E-A88C-BFC14C2C9738}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{7CDE27B0-879D-454E-A88C-BFC14C2C9738}.Release|Any CPU.Build.0 = Release|Any CPU
+		{9D0EBF3F-24B7-4C4E-8A09-17CD80354F75}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{9D0EBF3F-24B7-4C4E-8A09-17CD80354F75}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{9D0EBF3F-24B7-4C4E-8A09-17CD80354F75}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{9D0EBF3F-24B7-4C4E-8A09-17CD80354F75}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{7CDE27B0-879D-454E-A88C-BFC14C2C9738} = {681980BC-A18A-465F-8D75-6A9DCA61D134}
+		{681980BC-A18A-465F-8D75-6A9DCA61D134} = {A68EBA29-657F-4C87-A4BC-78D8F11EF8D5}
+		{9D0EBF3F-24B7-4C4E-8A09-17CD80354F75} = {681980BC-A18A-465F-8D75-6A9DCA61D134}
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {6B4EEA79-5F25-4158-B07C-D1D53A9671E2}
+	EndGlobalSection
+EndGlobal

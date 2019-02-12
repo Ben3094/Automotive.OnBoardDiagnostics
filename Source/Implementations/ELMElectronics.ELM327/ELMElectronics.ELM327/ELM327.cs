@@ -110,6 +110,7 @@ namespace ELMElectronics
         {
             this.serialPort.Open();
             this.identify();
+            this.setDeviceBehaviour();
         }
         private void checkHandshake()
         {
@@ -166,7 +167,6 @@ namespace ELMElectronics
         public const string SET_ACTIVITY_MONITOR_TIMEOUT_COMMAND_SUFFIX = "AMC";
         public static string SET_ACTIVITY_MONITOR_TIMEOUT_COMMAND = AT_COMMAND_PREFIX + SET_ACTIVITY_MONITOR_TIMEOUT_COMMAND_SUFFIX;
         public const byte ACTIVITY_MONITOR_TIMEOUT_INFINITE_VALUE = 0;
-        public static TimeSpan ACTIVITY_MONITOR_TIMEOUT_INFINITE = Timeout.InfiniteTimeSpan;
         private byte activityMonitorTimeoutValue = ACTIVITY_MONITOR_TIMEOUT_INFINITE_VALUE;
         public byte ActivityMonitorTimeoutValue
         {
@@ -182,13 +182,13 @@ namespace ELMElectronics
             get
             {
                 if (this.activityMonitorTimeoutValue == ACTIVITY_MONITOR_TIMEOUT_INFINITE_VALUE)
-                    return ACTIVITY_MONITOR_TIMEOUT_INFINITE;
+                    return TIMEOUT_INFINITE;
                 else
                     return new TimeSpan(0, 0, 0, 0, (int)((this.activityMonitorTimeoutValue + 1) * ACTIVITY_MONITOR_COUNT_PERIOD * 1000));
             }
             set
             {
-                if (value == ACTIVITY_MONITOR_TIMEOUT_INFINITE)
+                if (value == TIMEOUT_INFINITE)
                     this.ActivityMonitorTimeoutValue = 0;
                 else
                     this.ActivityMonitorTimeoutValue = (byte)(value.TotalSeconds / ACTIVITY_MONITOR_COUNT_PERIOD);
@@ -396,7 +396,7 @@ namespace ELMElectronics
                     this.canSilentMonitoring = value;
             }
         }
-
+        
         public const string MULTIPLY_CAN_TIMING_BY_5_AT_COMMAND_PREFIX = "CTM";
         public const char MULTIPLY_CAN_TIMING_BY_5_OFF_VALUE_SUFFIX = '1';
         public const char MULTIPLY_CAN_TIMING_BY_5_ON_VALUE_SUFFIX = '5';
@@ -411,35 +411,32 @@ namespace ELMElectronics
                     this.multiplierCANTimingBy5 = value;
             }
         }
-
-        public const string CALIBRATE_VOLTAGE_AT_COMMAND = "CV";
-        public const float CALIBRATE_VOLTAGE_DEFAULT_VALUE = 0; //in volts
-        public const float CALIBRATE_VOLTAGE_MIN_VALUE_INCLUSIVE = 0;
-        public const float CALIBRATE_VOLTAGE_MAX_VALUE_EXCLUSIVE = 100;
-        public const string CALIBRATE_VOLTAGE_FORMAT = "00.00";
-        public static string SynthesizeCalibrateVoltageArgument(float calibrateVoltage)
+        public const string SET_TIMEOUT_AT_COMMAND = "ST";
+        public const byte TIMEOUT_DEFAULT_VALUE = 32;
+        private byte timeoutValue = TIMEOUT_DEFAULT_VALUE;
+        public byte TimeoutValue
         {
-            if ((calibrateVoltage < CALIBRATE_VOLTAGE_MIN_VALUE_INCLUSIVE) && (calibrateVoltage >= CALIBRATE_VOLTAGE_MAX_VALUE_EXCLUSIVE))
-                throw new ArgumentException();
-            else
-                return calibrateVoltage.ToString(CALIBRATE_VOLTAGE_FORMAT).Replace(".", string.Empty);
-        }
-        private float calibrateVoltage = CALIBRATE_VOLTAGE_DEFAULT_VALUE;
-        public float CalibrateVoltage
-        {
-            get => this.calibrateVoltage;
+            get => this.timeoutValue;
             set
             {
-                if (this.SendSettingATCommand(CALIBRATE_VOLTAGE_AT_COMMAND + ' ' + SynthesizeCalibrateVoltageArgument(value)))
-                    this.calibrateVoltage = value;
+                if (this.SendSettingATCommand(SET_TIMEOUT_AT_COMMAND + " " + BitConverter.ToString(new byte[] { value })))
+                    this.timeoutValue = value;
             }
         }
-
-        public const string SET_DEFAULT_AT_COMMAND = "D";
-        public void SetValueToDefault()
+        public const byte TIMEOUT_INCREMENT_DEFAULT_VALUE = 4; //in ms
+        public const ushort TIMEOUT_MAX_VALUE = byte.MaxValue * TIMEOUT_INCREMENT_DEFAULT_VALUE; //in ms
+        public const string TIMEOUT_OVERFLOW_EXCEPTION_MESSAGE_PATTERN = "Timeout overflow. Maximum value is {0} ms.";
+        public static string TIMEOUT_OVERFLOW_EXCEPTION_MESSAGE = String.Format(TIMEOUT_OVERFLOW_EXCEPTION_MESSAGE_PATTERN, TIMEOUT_MAX_VALUE);
+        public TimeSpan Timeout
         {
-            this.SendATCommand(SET_DEFAULT_AT_COMMAND);
-            //TODO: Reset the default values
+            get => new TimeSpan(0, 0, 0, 0, this.TimeoutValue * TIMEOUT_INCREMENT_DEFAULT_VALUE);
+            set
+            {
+                if (value.TotalMilliseconds < TIMEOUT_MAX_VALUE)
+                    this.TimeoutValue = (byte)(value.TotalMilliseconds / TIMEOUT_INCREMENT_DEFAULT_VALUE);
+                else
+                    throw new OverflowException(TIMEOUT_OVERFLOW_EXCEPTION_MESSAGE);
+            }
         }
 
         public const string DISPLAY_LENGTH_COUNT_AT_COMMAND = "D";
@@ -450,7 +447,7 @@ namespace ELMElectronics
             get => this.displayLengthCout;
             set
             {
-                if (this.SendSettingATCommand(CALIBRATE_VOLTAGE_AT_COMMAND + synthesizeBooleanSetting(value)))
+                if (this.SendSettingATCommand(DISPLAY_LENGTH_COUNT_AT_COMMAND + synthesizeBooleanSetting(value)))
                     this.displayLengthCout = value;
             }
         }
@@ -822,6 +819,18 @@ namespace ELMElectronics
         }
 
         #region Device behaviour
+        private void setDeviceBehaviour()
+        {
+            this.SpaceInHexMessage = false;
+        }
+
+        public const string SET_DEFAULT_AT_COMMAND = "D";
+        public void SetValueToDefault()
+        {
+            this.SendATCommand(SET_DEFAULT_AT_COMMAND);
+            //TODO: Reset the default values
+        }
+
         #region Device identifier
         public const char ACCESS_IDENTIFIER_AT_COMMAND_PREFIX = '@';
         public const char DISPLAY_DEVICE_DESCRIPTION_AT_COMMAND_SUFFIX = '1';
@@ -862,6 +871,52 @@ namespace ELMElectronics
         }
         #endregion
 
+        #region Message handling behavior
+        public const string TOGGLE_SPACES_IN_HEX_MESSAGE_AT_COMMAND = "S";
+        public const bool TOGGLE_SPACES_IN_HEX_MESSAGE_DEFAULT_VALUE = true;
+        private bool spaceInHexMessage = TOGGLE_SPACES_IN_HEX_MESSAGE_DEFAULT_VALUE;
+        public bool SpaceInHexMessage
+        {
+            get => this.spaceInHexMessage;
+            set
+            {
+                if (this.SendSettingATCommand(TOGGLE_SPACES_IN_HEX_MESSAGE_AT_COMMAND + synthesizeBooleanSetting(value)))
+                    this.spaceInHexMessage = value;
+            }
+        }
+        #endregion
+
+        #region Voltage reading
+        public const string CALIBRATE_VOLTAGE_AT_COMMAND = "CV";
+        public const float CALIBRATE_VOLTAGE_DEFAULT_VALUE = 0; //in volts
+        public const float CALIBRATE_VOLTAGE_MIN_VALUE_INCLUSIVE = 0;
+        public const float CALIBRATE_VOLTAGE_MAX_VALUE_EXCLUSIVE = 100;
+        public const string CALIBRATE_VOLTAGE_FORMAT = "00.00";
+        public static string SynthesizeCalibrateVoltageArgument(float calibrateVoltage)
+        {
+            if ((calibrateVoltage < CALIBRATE_VOLTAGE_MIN_VALUE_INCLUSIVE) && (calibrateVoltage >= CALIBRATE_VOLTAGE_MAX_VALUE_EXCLUSIVE))
+                throw new ArgumentException();
+            else
+                return calibrateVoltage.ToString(CALIBRATE_VOLTAGE_FORMAT).Replace(".", string.Empty);
+        }
+        private float calibrateVoltage = CALIBRATE_VOLTAGE_DEFAULT_VALUE;
+        public float CalibrateVoltage
+        {
+            get => this.calibrateVoltage;
+            set
+            {
+                if (this.SendSettingATCommand(CALIBRATE_VOLTAGE_AT_COMMAND + ' ' + SynthesizeCalibrateVoltageArgument(value)))
+                    this.calibrateVoltage = value;
+            }
+        }
+
+        public const string READ_INPUT_VOLTAGE_AT_COMMAND = "RV";
+        public float InputVoltage
+        {
+            get => float.Parse(this.SendATCommand(READ_INPUT_VOLTAGE_AT_COMMAND));
+        }
+        #endregion
+
         public const string TOGGLE_VEHICLE_RESPONSE_AT_COMMAND = "R";
         public const bool TOGGLE_VEHICLE_RESPONSE_DEFAULT_VALUE = true;
         private bool showVehicleResponse = TOGGLE_VEHICLE_RESPONSE_DEFAULT_VALUE;
@@ -875,6 +930,7 @@ namespace ELMElectronics
             }
         }
 
+        #region Parameter setting
         public const string SET_VOLATILE_PARAMETER_AT_COMMAND = "PB";
         public const string VOLATILE_PARAMETER_NOT_SET_IO_EXCEPTION_MESSAGE = "Volatile parameter not set";
         public void SetVolatileParameter(byte parameterAddress, byte parameterValue)
@@ -922,6 +978,7 @@ namespace ELMElectronics
             }
             return parameters.ToArray();
         }
+        #endregion
 
         #region Non-volatile data storage
         public const string GET_NONVOLATILE_DATA_AT_COMMAND = "RD";
@@ -940,6 +997,8 @@ namespace ELMElectronics
         #endregion
 
         #region Protocol handling
+        public static TimeSpan TIMEOUT_INFINITE = System.Threading.Timeout.InfiniteTimeSpan;
+
         public const string SEARCHING_FOR_PROTOCOL_MESSAGE = "SEARCHING";
         public const string PROTOCOL_INIT_MESSAGE = "BUS INIT";
 
@@ -954,7 +1013,7 @@ namespace ELMElectronics
             return this.monitorMessage(MONITOR_TARGET_TRANSMITTER_MESSAGE_AT_COMMAND, cancellationToken, filter);
         }
 
-        public enum CANProtocol
+        public enum OBDProtocol
         {
             Automatic = 0x0,
             SAE_J1850_PWM = 0x1,
@@ -972,26 +1031,60 @@ namespace ELMElectronics
         }
         public const string GET_PROTOCOL_NAME_AT_COMMAND = "DP";
         public const string GET_PROTOCOL_AT_COMMAND = "DPN";
-        public const string GET_PROTOCOL_RESPONSE_PATTERN = @"^A([A-F\d]{1})";
+        public const string GET_PROTOCOL_RESPONSE_PATTERN = @"^(A?)([A-F\d]{1})";
         public static Regex GET_PROTOCOL_RESPONSE_REGEX = new Regex(GET_PROTOCOL_RESPONSE_PATTERN, DEFAULT_REGEX_OPTIONS);
-        public CANProtocol CANProtocolSet
+        public const string SET_PROTOCOL_AT_COMMAND = "SP";
+        public const string PROTOCOL_NOT_SET_IO_EXCEPTION_MESSAGE = "Protocol not set";
+        public OBDProtocol Protocol
         {
             get
             {
                 string response = this.SendATCommand(GET_PROTOCOL_AT_COMMAND);
-                string protocolString = GET_PROTOCOL_RESPONSE_REGEX.Match(response).Captures[0].Value;
+                string protocolString = GET_PROTOCOL_RESPONSE_REGEX.Match(response).Groups[1].Captures[0].Value;
                 if (protocolString.Length == 1)
                     protocolString.Insert(0, "0");
-                return (CANProtocol)Convert.FromBase64String(protocolString)[0];
+                return (OBDProtocol)byte.Parse(protocolString, System.Globalization.NumberStyles.HexNumber);
             }
+            set => this.setProtocolWithFallbackAutomaticSearch(value, this.FallbackAutomaticProtocolSearch);
+        }
+        public bool FallbackAutomaticProtocolSearch
+        {
+            get
+            {
+                string response = this.SendATCommand(GET_PROTOCOL_AT_COMMAND);
+                return GET_PROTOCOL_RESPONSE_REGEX.Match(response).Groups[0].Success;
+            }
+            set => this.setProtocolWithFallbackAutomaticSearch(this.Protocol, value);
+        }
+        private void setProtocolWithFallbackAutomaticSearch(OBDProtocol protocol, bool fallbackAutomaticSearch, string setOrTryCommand = SET_PROTOCOL_AT_COMMAND)
+        {
+            string command = setOrTryCommand + " ";
+            if (fallbackAutomaticSearch)
+                command += "A";
+            command += BitConverter.ToString(new byte[] { (byte)protocol })[1];
+            if (!this.SendSettingATCommand(command))
+                throw new IOException(PROTOCOL_NOT_SET_IO_EXCEPTION_MESSAGE);
         }
         public const string PROTOCOL_CLOSE_AT_COMMAND = "PC";
         public void ProtocolClose()
         {
             this.SendSettingATCommand(PROTOCOL_CLOSE_AT_COMMAND);
         }
+        public const string FORCE_STANDARD_SEQUENCE_PROTOCOL_SEARCH_AT_COMMAND = "SS";
+        public const string FORCE_STANDARD_SEQUENCE_PROTOCOL_SEARCH_IMPOSSIBLE_IO_EXCEPTION_MESSAGE = "Force standard sequesce protocol search impossible";
+        public void ForceStandardSequenceProtocolSearch()
+        {
+            if (!this.SendSettingATCommand(FORCE_STANDARD_SEQUENCE_PROTOCOL_SEARCH_AT_COMMAND))
+                throw new IOException(FORCE_STANDARD_SEQUENCE_PROTOCOL_SEARCH_IMPOSSIBLE_IO_EXCEPTION_MESSAGE);
+        }
+        public const string TRY_PROTOCOL_AT_COMMAND = "TP";
+        public void TryProtocolWithFallbackAutomaticSearch(OBDProtocol protocol, bool fallbackAutomaticSearch)
+        {
+            this.setProtocolWithFallbackAutomaticSearch(protocol, fallbackAutomaticSearch, TRY_PROTOCOL_AT_COMMAND);
+        }
 
         public const string SET_RECEIVE_ADDRESS_AT_COMMAND = "RA";
+        public const string SET_RECEIVE_ADDRESS_FALLBACK_AT_COMMAND = "SR";
         public static byte? RECEIVE_ADDRESS_DEFAULT_VALUE = null;
         private byte? receiveAddress = RECEIVE_ADDRESS_DEFAULT_VALUE;
         public byte? ReceiveAddress
@@ -1006,6 +1099,113 @@ namespace ELMElectronics
                     this.receiveAddress = value;
             }
         }
+
+        public const string SEND_REMOTE_TRANSMISSION_REQUEST_AT_COMMAND = "RTR";
+        //TODO: Change string to correct type
+        public string RequestRemoteFrame()
+        {
+            return this.SendATCommand(SEND_REMOTE_TRANSMISSION_REQUEST_AT_COMMAND);
+        }
+
+        public const string SET_HEADER_AT_COMMAND = "SH";
+        public static BitArray HEADER_DEFAULT_VALUE = null;
+        private BitArray header = HEADER_DEFAULT_VALUE;
+        public BitArray Header
+        {
+            get => this.header;
+            set
+            {
+                //if (CAN_ID_LENGTHS.Contains(value.Length))
+                //{
+                //    if (this.SendSettingATCommand(SET_HEADER_AT_COMMAND + ' ' + value.))
+                //        this.header = value;
+                //}
+                //else throw new ArgumentException(CAN_ID_WRONG_LENGTH_EXCEPTION_MESSAGE);
+            }
+        }
+
+        public const string PERFORM_SLOW_INITIATION_AT_COMMAND = "SI";
+        public void PerformSlowInitiation()
+        {
+            this.SendATCommand(PERFORM_SLOW_INITIATION_AT_COMMAND);
+        }
+
+        public const string SET_VEHICLE_WATCHDOG_AT_COMMAND = "SW";
+        public const byte VEHICLE_WATCHDOG_DEFAULT_VALUE = 92;
+        private byte vehicleWatchdogValue = VEHICLE_WATCHDOG_DEFAULT_VALUE;
+        public byte VehicleWatchdogValue
+        {
+            get => this.vehicleWatchdogValue;
+            set
+            {
+                if (this.SendSettingATCommand(SET_VEHICLE_WATCHDOG_AT_COMMAND + " " + BitConverter.ToString(new byte[] { value })))
+                    this.vehicleWatchdogValue = value;
+            }
+        }
+        public const byte VEHICLE_WATCHDOG_INCREMENT_DEFAULT_VALUE = 20; //in ms
+        public const ushort VEHICLE_WATCHDOG_MAX_VALUE = byte.MaxValue * VEHICLE_WATCHDOG_INCREMENT_DEFAULT_VALUE; //in ms
+        public const string VEHICLE_WATCHDOG_OVERFLOW_EXCEPTION_MESSAGE_PATTERN = "Vehicle watchdog overflow. Maximum value is {0} ms.";
+        public static string VEHICLE_WATCHDOG_OVERFLOW_EXCEPTION_MESSAGE = String.Format(VEHICLE_WATCHDOG_OVERFLOW_EXCEPTION_MESSAGE_PATTERN, VEHICLE_WATCHDOG_MAX_VALUE);
+        public TimeSpan VehicleWatchdog
+        {
+            get
+            {
+                byte value = this.VehicleWatchdogValue;
+                if (value == 0)
+                    return TIMEOUT_INFINITE;
+                else
+                    return new TimeSpan(0, 0, 0, 0, this.TimeoutValue * VEHICLE_WATCHDOG_INCREMENT_DEFAULT_VALUE);
+            }
+            set
+            {
+                if (value == TIMEOUT_INFINITE)
+                    this.TimeoutValue = 0;
+                else if (value.TotalMilliseconds < VEHICLE_WATCHDOG_MAX_VALUE)
+                    this.TimeoutValue = (byte)(value.TotalMilliseconds / VEHICLE_WATCHDOG_INCREMENT_DEFAULT_VALUE);
+                else
+                    throw new OverflowException(VEHICLE_WATCHDOG_OVERFLOW_EXCEPTION_MESSAGE);
+            }
+        }
+
+        public const string SET_TESTER_ADDRESS_AT_COMMAND = "TA";
+        public const byte TESTER_ADDRESS_DEFAULT_VALUE = 0xF9;
+        private byte testerAddress = TESTER_ADDRESS_DEFAULT_VALUE;
+        public byte TesterAddress
+        {
+            get => this.testerAddress;
+            set
+            {
+                if (this.SendSettingATCommand(SET_TESTER_ADDRESS_AT_COMMAND + " " + BitConverter.ToString(new byte[] { value })))
+                    this.testerAddress = value;
+            }
+        }
+
+        public const string SET_WATCHDOG_MESSAGE_AT_COMMAND = "WM";
+        private byte[] watchdogMessage = null;
+        public byte[] WatchdogMessage
+        {
+            get => this.watchdogMessage;
+            set
+            {
+                if (this.SendSettingATCommand(SET_WATCHDOG_MESSAGE_AT_COMMAND + " " + BitConverter.ToString(value).Replace('-', ' ')))
+                    this.watchdogMessage = value;
+            }
+        }
+
+        #region CAN protocol
+        public const string TOGGLE_CAN_MESSAGE_VARIABLE_LENGTH_AT_COMMAND = "V";
+        public const bool CAN_MESSAGE_VARIABLE_LENGTH_DEFAULT_VALUE = false;
+        private bool canMessageVariableLength = CAN_MESSAGE_VARIABLE_LENGTH_DEFAULT_VALUE;
+        public bool CanMessageVariableLength
+        {
+            get => this.canMessageVariableLength;
+            set
+            {
+                if (this.SendSettingATCommand(TOGGLE_CAN_MESSAGE_VARIABLE_LENGTH_AT_COMMAND + synthesizeBooleanSetting(value)))
+                    this.canMessageVariableLength = value;
+            }
+        }
+        #endregion
         #endregion
     }
 }

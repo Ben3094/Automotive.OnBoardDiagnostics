@@ -1,4 +1,5 @@
-﻿using System;
+﻿using BenDotNet.Numerics;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
@@ -14,7 +15,8 @@ namespace ELMElectronics
     {
         public ELM327(string portName)
         {
-            this.serialPort = new SerialPort(portName, SERIAL_PORT_ALLOWED_BAUD_RATES.First(), SERIAL_PORT_PARITY, SERIAL_PORT_DATA_BITS, SERIAL_PORT_STOP_BITS) { NewLine = SERIAL_PORT_NEW_LINE.ToString() };
+            this.serialPort = new SerialPort(portName, SERIAL_PORT_ALLOWED_BAUD_RATES.First(), SERIAL_PORT_PARITY, SERIAL_PORT_DATA_BITS, SERIAL_PORT_STOP_BITS) { NewLine = CARRIAGE_RETURN.ToString() };
+            this.initProgrammableParameter();
         }
 
         private readonly SerialPort serialPort;
@@ -34,7 +36,8 @@ namespace ELMElectronics
         public const Parity SERIAL_PORT_PARITY = Parity.None;
         public const byte SERIAL_PORT_DATA_BITS = 8;
         public const StopBits SERIAL_PORT_STOP_BITS = StopBits.One;
-        public const char SERIAL_PORT_NEW_LINE = '\r';
+        public const char CARRIAGE_RETURN = '\r';
+        public const char LINE_FEED = '\n';
 
         public static TimeSpan TIMEOUT_INFINITE = System.Threading.Timeout.InfiniteTimeSpan;
 
@@ -56,7 +59,7 @@ namespace ELMElectronics
             if (!Watchdog.Execute(() => response = this.serialPort.ReadExisting(), SERIAL_PORT_WATCHDOG_TIME))
                 throw new TimeoutException(TIMEOUT_EXPIRED_EXCEPTION_MESSAGE);
 
-            string[] responseParts = response.Split(SERIAL_PORT_NEW_LINE);
+            string[] responseParts = response.Split(CARRIAGE_RETURN);
             if (responseParts[0] == command)
             {
                 //TODO: wait for idle state if not present
@@ -284,9 +287,11 @@ namespace ELMElectronics
         public const string SUM_PARAMETER_AT_COMMAND = "PPS";
         public const char PARAMETER_ENABLE_INDICATOR = 'N';
         public const char PARAMETER_DISABLE_INDICATOR = 'F';
-        public static string SUM_PARAMETERS_PATTERN = @"([A-F\d]{2}):([A-F\d]{2}) ([" + PARAMETER_ENABLE_INDICATOR + PARAMETER_DISABLE_INDICATOR + "])";
+        public static string GET_PARAMETER_PATTERN = @"{0}:([A-F\d]{2}) ([" + PARAMETER_ENABLE_INDICATOR + PARAMETER_DISABLE_INDICATOR + "])";
+        public static string SUM_PARAMETERS_ALL_ADDRESS_PATTERN = @"([A-F\d]{2})";
+        public static string SUM_PARAMETERS_PATTERN = String.Format(GET_PARAMETER_PATTERN, SUM_PARAMETERS_ALL_ADDRESS_PATTERN);
         public static Regex SUM_PARAMETERS_REGEX = new Regex(SUM_PARAMETERS_PATTERN);
-        public IEnumerable<Tuple<byte, byte, bool>> SumParameter()
+        public IEnumerable<Tuple<byte, byte, bool>> SumParameters()
         {
             MatchCollection parametersMatches = SUM_PARAMETERS_REGEX.Matches(this.SendATCommand(SUM_PARAMETER_AT_COMMAND));
             List<Tuple<byte, byte, bool>> parameters = new List<Tuple<byte, byte, bool>>();
@@ -296,11 +301,23 @@ namespace ELMElectronics
                 (
                     byte.Parse(parameterMatch.Groups[0].Value, System.Globalization.NumberStyles.HexNumber),
                     byte.Parse(parameterMatch.Groups[1].Value, System.Globalization.NumberStyles.HexNumber),
-                    parameterMatch.Groups[1].Value[0] == PARAMETER_ENABLE_INDICATOR
+                    parameterMatch.Groups[2].Value[0] == PARAMETER_ENABLE_INDICATOR
                 ));
             }
             return parameters.ToArray();
         }
+        public Tuple<byte, bool> GetParameter(byte address)
+        {
+            string pattern = String.Format(GET_PARAMETER_PATTERN, BitConverter.ToString(new byte[] { address }));
+            Match parameterMatch = new Regex(pattern).Match(this.SendATCommand(SUM_PARAMETER_AT_COMMAND));
+            return new Tuple<byte, bool>
+            (
+                byte.Parse(parameterMatch.Groups[0].Value, System.Globalization.NumberStyles.HexNumber),
+                parameterMatch.Groups[2].Value[0] == PARAMETER_ENABLE_INDICATOR
+            );
+        }
+        public const byte PROGRAMMABLE_PARAMETER_BOOLEAN_TRUE_VALUE = 0x00;
+        public const byte PROGRAMMABLE_PARAMETER_BOOLEAN_FALSE_VALUE = 0xFF;
         #endregion
 
         #region Serial communication
@@ -343,31 +360,32 @@ namespace ELMElectronics
 
         #region Power
         public const string PUT_IN_LOW_POWER_MODE_AT_COMMAND = "LP";
-        public const byte SLEEP_MODE_ACTIVATION_TIME_S = 1;
-        public static TimeSpan SLEEP_MODE_ACTIVATION_TIME = TimeSpan.FromSeconds(SLEEP_MODE_ACTIVATION_TIME_S);
-        public const string SLEEP_MODE_ACTIVATION_ERROR_IO_EXCEPTION = "Impossible to turn on sleep mode: ";
-        public void PutInSleepMode()
+        public const byte LOW_POWER_ACTIVATION_TIME_S = 1;
+        public static TimeSpan LOW_POWER_ACTIVATION_TIME = TimeSpan.FromSeconds(LOW_POWER_ACTIVATION_TIME_S);
+        public const string LOW_POWER_ACTIVATION_ERROR_IO_EXCEPTION = "Impossible to turn on sleep mode: ";
+        public void PutInLowPower()
         {
-            this.serialPort.WriteLine(AT_COMMAND_PREFIX + " " + PUT_IN_LOW_POWER_MODE_AT_COMMAND);
-            string response = null;
-            if (!Watchdog.Execute(() => response = this.serialPort.ReadExisting(), SLEEP_MODE_ACTIVATION_TIME))
-                throw new TimeoutException(TIMEOUT_EXPIRED_EXCEPTION_MESSAGE);
-            else if (response != SETTING_COMMAND_SUCCESS_RESPONSE)
-                throw new IOException(SLEEP_MODE_ACTIVATION_ERROR_IO_EXCEPTION + response);
+            if (this.SendSettingATCommand(PUT_IN_LOW_POWER_MODE_AT_COMMAND))
+                Thread.Sleep(LOW_POWER_ACTIVATION_TIME);
+            else
+                throw new IOException(LOW_POWER_ACTIVATION_ERROR_IO_EXCEPTION);
         }
 
         public const string MONITOR_IGNITION_AT_COMMAND = "IGN";
         public const string IGNITION_ON_RESPONSE = "ON";
         public const string IGNITION_OFF_RESPONSE = "OFF";
         public const string CANT_PARSE_IGNITION_MONITORING_IOEXCEPTION_MESSAGE = "Can't parse ignition monitoring : ";
-        public bool IsIgnite()
+        public bool IsVehicleIgnite
         {
-            string ignitionStatus = this.SendATCommand(MONITOR_IGNITION_AT_COMMAND);
-            if (ignitionStatus.StartsWith(IGNITION_ON_RESPONSE))
-                return true;
-            else if (ignitionStatus.StartsWith(IGNITION_OFF_RESPONSE))
-                return false;
-            else throw new IOException(CANT_PARSE_IGNITION_MONITORING_IOEXCEPTION_MESSAGE + ignitionStatus);
+            get
+            {
+                string ignitionStatus = this.SendATCommand(MONITOR_IGNITION_AT_COMMAND);
+                if (ignitionStatus.StartsWith(IGNITION_ON_RESPONSE))
+                    return true;
+                else if (ignitionStatus.StartsWith(IGNITION_OFF_RESPONSE))
+                    return false;
+                else throw new IOException(CANT_PARSE_IGNITION_MONITORING_IOEXCEPTION_MESSAGE + ignitionStatus); 
+            }
         }
 
         #region Voltage reading
@@ -407,7 +425,7 @@ namespace ELMElectronics
         public const char TOGGLE_LONG_LENGTH_COMMAND_COMMAND_PREFIX = 'A';
         public const char TOGGLE_NORMAL_LENGTH_COMMAND_COMMAND_PREFIX = 'N';
         public const char TOGGLE_LENGTH_COMMAND_COMMAND_SUFFIX = 'L';
-        public const bool TOGGLE_LENGTH_COMMAND_DEFAULT_VALUE = true;
+        public static bool TOGGLE_LENGTH_COMMAND_DEFAULT_VALUE = true;
         private bool isLongCommand = TOGGLE_LENGTH_COMMAND_DEFAULT_VALUE;
         public bool IsLongCommand
         {
@@ -1217,5 +1235,126 @@ namespace ELMElectronics
         }
         #endregion
         #endregion
+
+        #region Beta Zone
+        /* You are traveling through another dimension, a dimension not only of sight and sound but of mind.
+         * A journey into a wondrous land whose boundaries are that of imagination.
+         * Your next stop, the Beta Zone! */
+        public enum WayOfApply { Immediate, SetDefault, Reset, MaterialRestart }
+        public abstract class ProgrammableParameter<T>
+        {
+            internal ProgrammableParameter(ref ELM327 instance, byte address, Range<byte> acceptedValues, byte defaultValue, WayOfApply applicationWay)
+            {
+                this.instance = instance;
+                this.Address = address;
+                this.acceptedValues = acceptedValues;
+                this.defaultValue = defaultValue;
+                this.ApplicationWay = applicationWay;
+            }
+            private readonly ELM327 instance;
+            public readonly byte Address;
+            protected readonly Range<byte> acceptedValues;
+            protected readonly byte defaultValue;
+            public readonly WayOfApply ApplicationWay;
+
+            protected byte ByteValue
+            {
+                get => this.instance.GetParameter(this.Address).Item1;
+                set => this.instance.SetParameter(this.Address, value);
+            }
+            public abstract T Value { get; set; }
+
+            public bool IsEnabled
+            {
+                get => this.instance.GetParameter(this.Address).Item2;
+                set => this.instance.ToggleParameterSetValue(this.Address, value);
+            }
+        }
+        public class BooleanProgrammableParameter : ProgrammableParameter<bool>
+        {
+            private const byte BOOLEAN_TRUE_VALUE = 0x00;
+            private const byte BOOLEAN_FALSE_VALUE = 0xFF;
+            private static IOrderedEnumerable<byte> acceptedValuesPrimitive = new byte[] { BOOLEAN_TRUE_VALUE, BOOLEAN_FALSE_VALUE }.OrderBy(obj => obj);
+            private static Range<byte> acceptedValues = new DiscreteRange<byte>(ref acceptedValuesPrimitive);
+            private static byte synthetizeBoolean(bool value)
+            {
+                return value ? BOOLEAN_TRUE_VALUE : BOOLEAN_FALSE_VALUE;
+            }
+            public const string NOT_BOOLEAN_ARGUMENT_EXCEPTION_MESSAGE = "Not boolean";
+            private static bool parseBoolean(byte value)
+            {
+                switch (value)
+                {
+                    case BOOLEAN_TRUE_VALUE:
+                        return true;
+                    case BOOLEAN_FALSE_VALUE:
+                        return false;
+                    default:
+                        throw new ArgumentException(NOT_BOOLEAN_ARGUMENT_EXCEPTION_MESSAGE);
+                }
+            }
+
+            internal BooleanProgrammableParameter(ref ELM327 instance, byte address, bool defaultValue, WayOfApply applicationWay) : base(ref instance, address, acceptedValues, synthetizeBoolean(defaultValue), applicationWay) { }
+
+            public override bool Value
+            {
+                get => parseBoolean(this.ByteValue);
+                set => this.ByteValue = synthetizeBoolean(value);
+            }
+        }
+        public class ByteProgrammableParameter : ProgrammableParameter<byte>
+        {
+            internal ByteProgrammableParameter(ref ELM327 instance, byte address, Range<byte> acceptedValues, byte defaultValue, WayOfApply applicationWay) : base(ref instance, address, acceptedValues, defaultValue, applicationWay) { }
+            public override byte Value { get => this.ByteValue; set => this.ByteValue = value; }
+        }
+        public class CharProgrammableParameter : ProgrammableParameter<char>
+        {
+            private static Range<byte> ALL_1_BYTE_CHAR = new Range<byte>(byte.MinValue, byte.MaxValue);
+            internal CharProgrammableParameter(ref ELM327 instance, byte address, char defaultValue, WayOfApply applicationWay) : base(ref instance, address, ALL_1_BYTE_CHAR, BitConverter.GetBytes(defaultValue)[0], applicationWay)
+            {
+                if (BitConverter.GetBytes(defaultValue)[1] > byte.MinValue)
+                    throw new ArgumentException();
+            }
+            public override char Value
+            {
+                get => BitConverter.ToChar(new byte[] { this.ByteValue, byte.MinValue }, 0);
+                set
+                {
+                    byte[] bytes = BitConverter.GetBytes(value);
+                    if (bytes[1] == byte.MinValue)
+                        this.ByteValue = bytes[0];
+                    else
+                        throw new ArgumentException();
+                }
+            }
+        }
+        private void initProgrammableParameter()
+        {
+            ELM327 thisReference = this;
+            this.MonitorAtStartUp = new BooleanProgrammableParameter(ref thisReference, 0x00, false, WayOfApply.Reset);
+            this.HeaderBytesPrint = new BooleanProgrammableParameter(ref thisReference, 0x01, false, WayOfApply.SetDefault);
+            this.LongMessage = new BooleanProgrammableParameter(ref thisReference, 0x02, false, WayOfApply.SetDefault);
+            this.Echo = new BooleanProgrammableParameter(ref thisReference, 0x09, true, WayOfApply.Reset);
+            this.LinefeedCharacter = new CharProgrammableParameter(ref thisReference, 0x0A, LINE_FEED, WayOfApply.Reset);
+            this.CarriageReturnCharacter = new CharProgrammableParameter(ref thisReference, 0x0D, CARRIAGE_RETURN, WayOfApply.Reset);
+            this.J1850BreakSignalMonitorToggle = new BooleanProgrammableParameter(ref thisReference, 0x11, true, WayOfApply.SetDefault);
+            this.DefaultCANSilentMonitoringSettingToggle = new BooleanProgrammableParameter(ref thisReference, 0x21, true, WayOfApply.Reset);
+            this.CANAutoFormattingToggle = new BooleanProgrammableParameter(ref thisReference, 0x24, true, WayOfApply.SetDefault);
+            this.CANAutoFlowControlToggle = new BooleanProgrammableParameter(ref thisReference, 0x25, true, WayOfApply.SetDefault);
+            this.CANHeaderBytesDataLength = new BooleanProgrammableParameter(ref thisReference, 0x29, false, WayOfApply.SetDefault);
+        }
+        BooleanProgrammableParameter MonitorAtStartUp;
+        BooleanProgrammableParameter HeaderBytesPrint;
+        BooleanProgrammableParameter LongMessage;
+        BooleanProgrammableParameter Echo;
+        CharProgrammableParameter LinefeedCharacter;
+        CharProgrammableParameter CarriageReturnCharacter;
+        BooleanProgrammableParameter J1850BreakSignalMonitorToggle;
+        BooleanProgrammableParameter DefaultCANSilentMonitoringSettingToggle;
+        BooleanProgrammableParameter CANAutoFormattingToggle;
+        BooleanProgrammableParameter CANAutoFlowControlToggle;
+        BooleanProgrammableParameter CANHeaderBytesDataLength;
+        #endregion
     }
 }
+ 

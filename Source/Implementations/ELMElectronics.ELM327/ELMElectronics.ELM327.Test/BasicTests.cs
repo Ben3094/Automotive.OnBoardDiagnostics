@@ -30,6 +30,31 @@ namespace ELMElectronics.Test
             Assert.True(elm327.NonVolatileData == randomBytes[0]);
         }
 
+        [Fact]
+        public void PutInLowPowerMode()
+        {
+            this.elm327.PutInLowPower();
+
+            //Get up ELM327
+            //TODO: Find a function
+        }
+
+        public const string VEHICLE_IGNITE_DETECTION_MESSAGE_FORMAT = "The motor is {0}";
+        public const string VEHICLE_IGNITE_DETECTION_MOTOR_ON_ARGUMENT = "ON";
+        public const string VEHICLE_IGNITE_DETECTION_MOTOR_OFF_ARGUMENT = "OFF";
+        [Fact]
+        public void VehicleIgniteDetection()
+        {
+            bool isVehicleIgnite = this.elm327.IsVehicleIgnite;
+            string isVehicleIgniteMessage = isVehicleIgnite ? VEHICLE_IGNITE_DETECTION_MOTOR_ON_ARGUMENT : VEHICLE_IGNITE_DETECTION_MOTOR_OFF_ARGUMENT;
+            Console.WriteLine(String.Format(VEHICLE_IGNITE_DETECTION_MESSAGE_FORMAT, isVehicleIgniteMessage);
+
+            Assert.True(true);
+        }
+
+        [Fact]
+        public void Calibrate voltage setting
+
         #region Protocol handling
         [Fact]
         public void ProtocolSetting()
